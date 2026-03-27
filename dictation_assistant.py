@@ -1,5 +1,6 @@
 import sys
 import os
+import logging
 import numpy as np
 import pyaudio
 import threading
@@ -23,7 +24,99 @@ import win32con
 import win32clipboard
 import ctypes
 import json
-from pynput import mouse  # Adiciona suporte para eventos do mouse
+from pynput import mouse
+
+# ============== LOGGING ==============
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(SCRIPT_DIR, "live_dictate.log")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S',
+    handlers=[
+        logging.FileHandler(LOG_FILE, encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+log = logging.getLogger("LiveDictate")
+
+
+# ============== SINGLE INSTANCE ==============
+def ensure_single_instance():
+    """Prevents multiple instances via Windows mutex."""
+    mutex_name = "LiveDictate_SingleInstance_Mutex"
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, mutex_name)
+    if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        ctypes.windll.kernel32.CloseHandle(_mutex)
+        from tkinter import messagebox
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showwarning("Live Dictate",
+            "The app is already running.\nCheck the system tray icon.")
+        root.destroy()
+        sys.exit(0)
+    return _mutex
+
+
+# ============== TEXT POST-PROCESSING ==============
+def fix_stutter(text):
+    """Removes consecutive repeated words (speech recognition artifact)."""
+    if not text:
+        return text
+    words = text.split()
+    result = []
+    i = 0
+    while i < len(words):
+        current = words[i].lower().strip('.,!?')
+        j = i + 1
+        while j < len(words) and words[j].lower().strip('.,!?') == current:
+            j += 1
+        result.append(words[i])
+        i = j
+    return ' '.join(result)
+
+
+def auto_punctuate(text):
+    """Adds punctuation and capitalizes first letter for pt-BR text."""
+    if not text:
+        return text
+    text = text.strip()
+    text = text[0].upper() + text[1:] if len(text) > 1 else text.upper()
+    if text[-1] in '.!?':
+        return text
+
+    lower = text.lower()
+    words = lower.split()
+
+    question_starters = [
+        'o que', 'oque', 'como', 'quando', 'onde', 'por que', 'porque',
+        'qual', 'quais', 'quem', 'quanto', 'quantos', 'quantas',
+        'sera', 'seria', 'pode', 'posso', 'podemos',
+    ]
+    for q in question_starters:
+        if lower.startswith(q):
+            return text + '?'
+
+    question_enders = [
+        'ne', 'certo', 'sim', 'nao', 'hein', 'ein',
+        'mesmo', 'sabe', 'entende', 'entendeu', 'ta', 'ok',
+    ]
+    if words and words[-1].strip('.,!?') in question_enders:
+        return text + '?'
+
+    exclamations = [
+        'nossa', 'caramba', 'uau', 'wow', 'legal', 'incrivel',
+        'demais', 'otimo', 'perfeito', 'excelente', 'maravilhoso',
+        'obrigado', 'obrigada', 'valeu', 'parabens',
+    ]
+    for e in exclamations:
+        if e in lower:
+            return text + '!'
+
+    return text + '.'
+
 
 # Configuração da aplicação
 CONFIG_FILE = os.path.join(os.path.expanduser('~'), 'dictation_assistant_config.json')
@@ -52,14 +145,14 @@ class Config:
                     saved_config = json.load(f)
                     self.data.update(saved_config)
             except Exception as e:
-                print(f"Erro ao carregar configurações: {e}")
+                log.error(f"Erro ao carregar configurações: {e}")
     
     def save(self):
         try:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            print(f"Erro ao salvar configurações: {e}")
+            log.error(f"Erro ao salvar configurações: {e}")
     
     def get(self, key):
         return self.data.get(key, DEFAULT_CONFIG.get(key))
@@ -158,15 +251,15 @@ class AudioProcessor(QThread):
         for i in range(p.get_device_count()):
             dev = p.get_device_info_by_index(i)
             if dev['maxInputChannels'] > 0:  # Só mostra dispositivos com entrada
-                print(f"[{i}] {dev['name']}")
+                log.debug(f"[{i}] {dev['name']}")
                 
         # Tenta usar o dispositivo padrão de entrada
         try:
             default_device_info = p.get_default_input_device_info()
             device_index = int(default_device_info['index'])
-            print(f"Usando dispositivo de áudio padrão: {default_device_info['name']}")
+            log.info(f"Usando dispositivo de áudio padrão: {default_device_info['name']}")
         except Exception as e:
-            print(f"Erro ao obter dispositivo padrão: {e}")
+            log.error(f"Erro ao obter dispositivo padrão: {e}")
             # Busca algum dispositivo de entrada
             device_index = None
             for i in range(p.get_device_count()):
@@ -186,7 +279,7 @@ class AudioProcessor(QThread):
                     frames_per_buffer=self.config.get('chunk_size'),
                     input_device_index=device_index
                 )
-                print(f"Stream aberto com sucesso usando dispositivo {device_index}")
+                log.info(f"Stream aberto com sucesso usando dispositivo {device_index}")
             else:
                 stream = p.open(
                     format=pyaudio.paInt16,
@@ -195,9 +288,9 @@ class AudioProcessor(QThread):
                     input=True,
                     frames_per_buffer=self.config.get('chunk_size')
                 )
-                print("Stream aberto com dispositivo padrão")
+                log.info("Stream aberto com dispositivo padrão")
         except Exception as e:
-            print(f"Erro ao abrir stream: {e}")
+            log.error(f"Erro ao abrir stream: {e}")
             self.progress_update.emit(100)
             self.text_ready.emit("")
             self.partial_text.emit("Erro ao abrir microfone. Verifique as configurações.")
@@ -254,9 +347,9 @@ class AudioProcessor(QThread):
                                         else:
                                             self.partial_text.emit("Ouvindo...")
                             except Exception as partial_e:
-                                print(f"Erro na transcrição parcial: {partial_e}")
+                                log.debug(f"Erro na transcrição parcial: {partial_e}")
             except Exception as e:
-                print(f"Erro ao ler do stream: {e}")
+                log.error(f"Erro ao ler do stream: {e}")
                 break
         
         # Fim da gravação
@@ -322,6 +415,8 @@ class AudioProcessor(QThread):
                 if text:
                     # Adicionar algumas correções para palavras portuguesas comuns
                     text = self._correct_common_portuguese_errors(text)
+                    text = fix_stutter(text)
+                    text = auto_punctuate(text)
                     self.text_ready.emit(text)
                 else:
                     self.text_ready.emit("")
@@ -332,12 +427,12 @@ class AudioProcessor(QThread):
                 self.partial_text.emit("Não foi possível entender o áudio. Tente novamente falando mais devagar e claramente.")
             except sr.RequestError as e:
                 self.progress_update.emit(100)
-                print(f"Erro na requisição ao serviço de reconhecimento: {e}")
+                log.error(f"Erro na requisição ao serviço de reconhecimento: {e}")
                 self.text_ready.emit("")
                 self.partial_text.emit("ERRO: Serviço de reconhecimento indisponível. Verifique sua conexão.")
         except Exception as e:
             self.progress_update.emit(100)
-            print(f"Erro ao processar áudio: {e}")
+            log.error(f"Erro ao processar áudio: {e}")
             self.text_ready.emit("")
             self.partial_text.emit(f"ERRO: {str(e)}")
     
@@ -423,7 +518,7 @@ class TextInputChecker:
                 if style & 0x00800000:  # ES_MULTILINE
                     return True
         except Exception as e:
-            print(f"Erro ao verificar controle: {e}")
+            log.debug(f"Erro ao verificar controle: {e}")
         
         return False
 
@@ -1743,7 +1838,7 @@ class MainWindow(QMainWindow):
                 # Configura o listener do mouse
                 self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
                 self.mouse_listener.start()
-                print(f"Registrado listener do mouse para: {self.original_hotkey}")
+                log.info(f"Registrado listener do mouse para: {self.original_hotkey}")
             else:
                 # Se for uma tecla do teclado, usa a biblioteca keyboard
                 try:
@@ -1755,7 +1850,7 @@ class MainWindow(QMainWindow):
             # Atualizar texto do botão
             self.record_button.setText("INICIAR")
         except Exception as e:
-            print(f"Erro ao registrar atalho: {e}")
+            log.error(f"Erro ao registrar atalho: {e}")
             QMessageBox.warning(self, "Erro", f"Não foi possível registrar o atalho: {e}")
     
     def on_mouse_click(self, x, y, button, pressed):
@@ -1952,7 +2047,7 @@ class MainWindow(QMainWindow):
                 # Limpar texto pendente
                 self.pending_text = ""
             except Exception as e:
-                print(f"Erro ao manipular área de transferência: {e}")
+                log.error(f"Erro ao manipular área de transferência: {e}")
         else:
             # Informar que não há área de texto em foco
             self.status_label.setText("Nenhuma área editável selecionada!")
@@ -2067,7 +2162,7 @@ def create_mic_icon():
         
         img.save("mic_icon.png")
     except Exception as e:
-        print(f"Erro ao criar ícone: {e}")
+        log.error(f"Erro ao criar ícone: {e}")
 
 # Função para configurar a inicialização automática com o Windows
 def setup_autostart(enable=True):
@@ -2098,10 +2193,12 @@ def setup_autostart(enable=True):
         winreg.CloseKey(key)
         return True
     except Exception as e:
-        print(f"Erro ao configurar inicialização automática: {e}")
+        log.error(f"Erro ao configurar inicialização automática: {e}")
         return False
 
 if __name__ == "__main__":
+    _mutex = ensure_single_instance()
+    log.info("Live Dictate starting...")
     app = QApplication(sys.argv)
     config = Config()
     window = MainWindow(config)
