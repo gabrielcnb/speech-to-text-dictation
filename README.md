@@ -9,14 +9,14 @@ Windows desktop app for speech-to-text dictation. Hold a hotkey, speak, and the 
 ## Features
 
 - **Hold-to-record** via configurable hotkey (default: mouse side button) or keyboard shortcut
-- **Auto-punctuation** for pt-BR — adds `.` `?` `!` based on context
-- **Stutter correction** — removes repeated words from recognition artifacts
-- **Real-time preview** — see partial transcription as you speak
+- **Auto-punctuation** for pt-BR: adds `.` `?` `!` based on context
+- **Stutter correction**: removes repeated words from recognition artifacts
+- **Real-time preview**: see partial transcription as you speak
 - **Audio spectrum visualizer** embedded in the UI
 - **Text injection** into any active window via clipboard
-- **Accept/Reject workflow** — review text before pasting (Mouse5/Mouse6)
-- **Single instance guard** — prevents duplicate processes
-- **Multilingual** — default pt-BR, supports any Google Speech API language
+- **Accept/Reject workflow**: review text before pasting (Mouse5/Mouse6)
+- **Single instance guard**: prevents duplicate processes
+- **Multilingual**: default pt-BR, supports any Google Speech API language
 - **System tray** with quick access to settings
 - **File logging** for troubleshooting (`live_dictate.log`)
 - **Windows autostart** option via registry
@@ -48,7 +48,7 @@ python dictation_assistant.py
 
 1. Focus any text input (browser, editor, chat)
 2. Hold the configured hotkey (default: mouse5)
-3. Speak — release to transcribe and inject text
+3. Speak, then release to transcribe and inject text
 4. Mouse5 to accept, Mouse6 to reject and retry
 
 Settings (hotkey, language, audio quality, theme) are accessible from the tray icon or the main window.
