@@ -118,7 +118,7 @@ def auto_punctuate(text):
     return text + '.'
 
 
-# Configuração da aplicação
+# Application configuration
 CONFIG_FILE = os.path.join(os.path.expanduser('~'), 'dictation_assistant_config.json')
 DEFAULT_CONFIG = {
     'hotkey': 'mouse5',
@@ -126,11 +126,11 @@ DEFAULT_CONFIG = {
     'sample_rate': 48000,  # Aumentado para melhor qualidade
     'chunk_size': 1024,
     'auto_start': True,
-    'sensitivity': 70,  # Sensibilidade aumentada para melhor captar fala rápida
+    'sensitivity': 70,  # Raised so fast speech is picked up better
     'theme': 'dark',
     'continuous_recognition': False,
     'show_realtime_text': True,
-    'audio_quality': 'high',  # Definido como alto por padrão para melhor reconhecimento
+    'audio_quality': 'high',  # High by default, for better recognition
 }
 
 class Config:
@@ -145,14 +145,14 @@ class Config:
                     saved_config = json.load(f)
                     self.data.update(saved_config)
             except Exception as e:
-                log.error(f"Erro ao carregar configurações: {e}")
+                log.error(f"Failed to load settings: {e}")
     
     def save(self):
         try:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump(self.data, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            log.error(f"Erro ao salvar configurações: {e}")
+            log.error(f"Failed to save settings: {e}")
     
     def get(self, key):
         return self.data.get(key, DEFAULT_CONFIG.get(key))
@@ -161,7 +161,7 @@ class Config:
         self.data[key] = value
         self.save()
 
-# Classe para visualização do espectro de áudio
+# Audio spectrum visualiser
 class AudioSpectrumCanvas(FigureCanvasQTAgg):
     def __init__(self, parent=None, width=5, height=2, dpi=100):
         self.fig = Figure(figsize=(width, height), dpi=dpi)
@@ -169,7 +169,7 @@ class AudioSpectrumCanvas(FigureCanvasQTAgg):
         super(AudioSpectrumCanvas, self).__init__(self.fig)
         self.setParent(parent)
         
-        # Definir estilo do gráfico
+        # Chart styling
         self.fig.patch.set_facecolor('#2E2E2E')
         self.axes.set_facecolor('#2E2E2E')
         self.axes.spines['top'].set_visible(False)
@@ -178,12 +178,12 @@ class AudioSpectrumCanvas(FigureCanvasQTAgg):
         self.axes.spines['left'].set_visible(False)
         self.axes.tick_params(axis='both', colors='#CCCCCC')
         
-        # Configuração inicial
+        # Initial setup
         self.x = np.arange(0, 100)
         self.y = np.zeros(100)
         self.line, = self.axes.plot(self.x, self.y, '-', lw=2, color='#00AAFF')
         
-        # Configuração dos limites
+        # Axis limits
         self.axes.set_ylim(-0.5, 0.5)
         self.axes.set_xlim(0, 100)
         self.axes.set_xticks([])
@@ -193,22 +193,22 @@ class AudioSpectrumCanvas(FigureCanvasQTAgg):
         self.setMinimumHeight(120)
     
     def update_plot(self, data):
-        # Atualiza a visualização com novos dados
+        # Refresh the view with new data
         if len(data) > 0:
             # Normaliza os dados
             normalized_data = np.frombuffer(data, dtype=np.int16).astype(np.float32)
-            normalized_data = normalized_data / 32768.0  # Normaliza para -1.0 até 1.0
+            normalized_data = normalized_data / 32768.0  # Normalise to -1.0..1.0
             
-            # Atualiza somente os dados mais recentes
+            # Only refresh the most recent data
             data_len = min(len(normalized_data), 100)
             self.y = np.roll(self.y, -data_len)
             self.y[-data_len:] = normalized_data[:data_len]
             
-            # Atualiza a linha do gráfico
+            # Update the chart line
             self.line.set_ydata(self.y)
             self.draw()
 
-# Classe para processamento de áudio em thread separada
+# Audio processing on its own thread
 class AudioProcessor(QThread):
     audio_data = pyqtSignal(bytes)
     text_ready = pyqtSignal(str)
@@ -221,45 +221,45 @@ class AudioProcessor(QThread):
         self.recording = False
         self.recorded_data = []
         
-        # Inicialização do reconhecedor com configurações otimizadas
+        # Recogniser set up with tuned settings
         self.recognizer = sr.Recognizer()
-        # Configurações iniciais agressivas para detecção de voz
+        # Aggressive initial settings for voice detection
         self.recognizer.energy_threshold = 300  # Valor baixo para captar fala mais suave
         self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.dynamic_energy_adjustment_damping = 0.1  # Resposta mais rápida (padrão é 0.15)
-        self.recognizer.dynamic_energy_ratio = 1.1  # Mais sensível a mudanças (padrão é 1.5)
+        self.recognizer.dynamic_energy_adjustment_damping = 0.1  # Faster response (default is 0.15)
+        self.recognizer.dynamic_energy_ratio = 1.1  # More sensitive to change (default is 1.5)
         self.recognizer.pause_threshold = 0.3  # Tempo menor entre frases
         self.recognizer.phrase_threshold = 0.1  # Mais agressivo para detectar frases
-        self.recognizer.non_speaking_duration = 0.2  # Menos tempo de silêncio necessário
+        self.recognizer.non_speaking_duration = 0.2  # Requires less silence
         
         self.continuous_mode = config.get('continuous_recognition')
         self.show_realtime = config.get('show_realtime_text')
         self.last_partial_text = ""
         self.update_counter = 0
         
-        # Configurações otimizadas de qualidade de áudio para fala rápida
+        # Audio quality tuned for fast speech
         self.sample_rate = config.get('sample_rate')
-        # Fixar em 16kHz que é o recomendado para o Google Speech API
+        # Pinned to 16kHz, the rate Google Speech API recommends
         self.sample_rate = 16000  # Taxa ideal para reconhecimento de fala
     
     def run(self):
         # Inicializa PyAudio
         p = pyaudio.PyAudio()
         
-        # Lista os dispositivos disponíveis para debug
-        print("Dispositivos de áudio disponíveis:")
+        # List available devices, for debugging
+        print("Available audio devices:")
         for i in range(p.get_device_count()):
             dev = p.get_device_info_by_index(i)
-            if dev['maxInputChannels'] > 0:  # Só mostra dispositivos com entrada
+            if dev['maxInputChannels'] > 0:  # Only show devices with an input
                 log.debug(f"[{i}] {dev['name']}")
                 
-        # Tenta usar o dispositivo padrão de entrada
+        # Try the default input device
         try:
             default_device_info = p.get_default_input_device_info()
             device_index = int(default_device_info['index'])
-            log.info(f"Usando dispositivo de áudio padrão: {default_device_info['name']}")
+            log.info(f"Using default audio device: {default_device_info['name']}")
         except Exception as e:
-            log.error(f"Erro ao obter dispositivo padrão: {e}")
+            log.error(f"Failed to get the default device: {e}")
             # Busca algum dispositivo de entrada
             device_index = None
             for i in range(p.get_device_count()):
@@ -268,7 +268,7 @@ class AudioProcessor(QThread):
                     device_index = i
                     break
         
-        # Configura o stream de entrada
+        # Set up the input stream
         try:
             if device_index is not None:
                 stream = p.open(
@@ -288,20 +288,20 @@ class AudioProcessor(QThread):
                     input=True,
                     frames_per_buffer=self.config.get('chunk_size')
                 )
-                log.info("Stream aberto com dispositivo padrão")
+                log.info("Stream opened on the default device")
         except Exception as e:
             log.error(f"Erro ao abrir stream: {e}")
             self.progress_update.emit(100)
             self.text_ready.emit("")
-            self.partial_text.emit("Erro ao abrir microfone. Verifique as configurações.")
+            self.partial_text.emit("Could not open the microphone. Check your settings.")
             return
             
-        # Pronto para gravar
+        # Ready to record
         self.recording = True
         self.recorded_data = []
         
-        # Grava o áudio
-        self.partial_text.emit("Gravando áudio...")
+        # Record the audio
+        self.partial_text.emit("Recording...")
         self.progress_update.emit(10)
         
         while self.recording:
@@ -315,22 +315,22 @@ class AudioProcessor(QThread):
                     # Melhorado: Feedback em tempo real mais detalhado
                     if self.show_realtime:
                         self.update_counter += 1
-                        # Atualiza a visualização parcial com maior frequência (a cada 10 chunks em vez de 15)
+                        # Refresh the partial view more often (every 10 chunks instead of 15)
                         if self.update_counter % 10 == 0:
                             try:
-                                # Usa os últimos 3 segundos para capturar melhor frases rápidas
+                                # Use the last 3 seconds, which catches fast phrases better
                                 recent_data = self.recorded_data[-45:]
                                 if recent_data:
                                     audio_data = b''.join(recent_data)
                                     audio = sr.AudioData(audio_data, self.sample_rate, 2)
                                     
-                                    # Usa um timeout um pouco maior para melhorar reconhecimento parcial
+                                    # Slightly longer timeout, which improves partial recognition
                                     try:
-                                        # Configurações específicas para reconhecimento parcial de fala rápida
+                                        # Settings specific to partial recognition of fast speech
                                         self.recognizer.operation_timeout = 1.5
                                         temp_recognizer = sr.Recognizer()
                                         temp_recognizer.energy_threshold = self.recognizer.energy_threshold
-                                        temp_recognizer.pause_threshold = 0.4  # Ainda mais curto para fala rápida
+                                        temp_recognizer.pause_threshold = 0.4  # Shorter still, for fast speech
                                         
                                         partial_text = temp_recognizer.recognize_google(
                                             audio, 
@@ -341,18 +341,18 @@ class AudioProcessor(QThread):
                                             self.last_partial_text = partial_text
                                             self.partial_text.emit(f"Ouvindo: {partial_text}")
                                     except:
-                                        # Se falhar, mostra a última transcrição parcial bem-sucedida
+                                        # On failure, keep showing the last good partial transcript
                                         if self.last_partial_text:
                                             self.partial_text.emit(f"Ouvindo: {self.last_partial_text}...")
                                         else:
                                             self.partial_text.emit("Ouvindo...")
                             except Exception as partial_e:
-                                log.debug(f"Erro na transcrição parcial: {partial_e}")
+                                log.debug(f"Partial transcription failed: {partial_e}")
             except Exception as e:
                 log.error(f"Erro ao ler do stream: {e}")
                 break
         
-        # Fim da gravação
+        # Recording finished
         try:
             stream.stop_stream()
             stream.close()
@@ -369,38 +369,38 @@ class AudioProcessor(QThread):
     
     def process_audio(self):
         try:
-            self.partial_text.emit("Processando áudio...")
+            self.partial_text.emit("Processing audio...")
             self.progress_update.emit(50)
             
-            # Convertendo áudio gravado para texto
+            # Convert the recorded audio to text
             audio_data = b''.join(self.recorded_data)
             audio = sr.AudioData(audio_data, self.sample_rate, 2)  # 2 bytes por sample (16 bits)
             
-            # Ajusta configurações para MELHOR RECONHECIMENTO DE FALA RÁPIDA EM PORTUGUÊS
-            # Configurações agressivas para melhorar reconhecimento
-            self.recognizer.pause_threshold = 0.3  # Reduzido ainda mais para melhor lidar com fala muito rápida
+            # Tuned for recognising fast speech in Portuguese
+            # Aggressive settings to improve recognition
+            self.recognizer.pause_threshold = 0.3  # Lowered further to cope with very fast speech
             self.recognizer.operation_timeout = 30  # Aumentado para dar mais tempo ao processamento completo
             self.recognizer.energy_threshold = 300  # Valor baixo para detectar fala mais suave
             
             try:
-                # Reconhecimento usando Google Speech API com ajustes específicos
+                # Recognition through the Google Speech API, with specific tweaks
                 self.partial_text.emit("Tentando reconhecer texto...")
                 self.progress_update.emit(70)
                 
-                # Tentativas múltiplas de reconhecimento com diferentes configurações
+                # Several recognition attempts with different settings
                 try:
-                    # Primeira tentativa: configurações normais
+                    # First attempt: normal settings
                     text = self.recognizer.recognize_google(
                         audio, 
                         language=self.config.get('language'),
                         show_all=False,
                     )
                 except sr.UnknownValueError:
-                    # Segunda tentativa: com configurações alternativas
-                    # Pequena pausa para reiniciar a API
+                    # Second attempt: alternative settings
+                    # Brief pause so the API can restart
                     time.sleep(0.5)
                     
-                    # Criar um novo reconhecedor para segunda tentativa
+                    # Build a new recogniser for the second attempt
                     backup_recognizer = sr.Recognizer()
                     backup_recognizer.pause_threshold = 0.2
                     backup_recognizer.operation_timeout = 20
@@ -413,7 +413,7 @@ class AudioProcessor(QThread):
                 
                 self.progress_update.emit(100)
                 if text:
-                    # Adicionar algumas correções para palavras portuguesas comuns
+                    # Apply corrections for common Portuguese words
                     text = self._correct_common_portuguese_errors(text)
                     text = fix_stutter(text)
                     text = auto_punctuate(text)
@@ -424,21 +424,25 @@ class AudioProcessor(QThread):
             except sr.UnknownValueError:
                 self.progress_update.emit(100)
                 self.text_ready.emit("")
-                self.partial_text.emit("Não foi possível entender o áudio. Tente novamente falando mais devagar e claramente.")
+                self.partial_text.emit("Could not understand the audio. Try again, speaking more slowly and clearly.")
             except sr.RequestError as e:
                 self.progress_update.emit(100)
-                log.error(f"Erro na requisição ao serviço de reconhecimento: {e}")
+                log.error(f"Recognition service request failed: {e}")
                 self.text_ready.emit("")
-                self.partial_text.emit("ERRO: Serviço de reconhecimento indisponível. Verifique sua conexão.")
+                self.partial_text.emit("ERROR: recognition service unavailable. Check your connection.")
         except Exception as e:
             self.progress_update.emit(100)
-            log.error(f"Erro ao processar áudio: {e}")
+            log.error(f"Failed to process audio: {e}")
             self.text_ready.emit("")
             self.partial_text.emit(f"ERRO: {str(e)}")
     
     def _correct_common_portuguese_errors(self, text):
-        """Corrige erros comuns de reconhecimento em português"""
-        # Dicionário de correções comuns
+        """Fix common Portuguese recognition errors.
+
+        The keys and values stay in Portuguese on purpose: this is pt-BR
+        language data, not interface text.
+        """
+        # Common correction pairs
         corrections = {
             'hum': 'um',
             'nao': 'não',
@@ -457,27 +461,27 @@ class AudioProcessor(QThread):
             'td': 'tudo'
         }
         
-        # Aplicar correções
+        # Apply the corrections
         result = text
         for wrong, correct in corrections.items():
             result = result.replace(wrong, correct)
             
         return result
 
-# Classe para verificar se a janela atual aceita entrada de texto
+# Checks whether the focused window accepts text input
 class TextInputChecker:
     @staticmethod
     def is_text_input_focused():
-        # Obtém a janela em foco
+        # Get the focused window
         hwnd = win32gui.GetForegroundWindow()
         
-        # Obtém o nome da classe da janela
+        # Get the window's class name
         try:
             class_name = win32gui.GetClassName(hwnd).lower()
         except:
             return False
         
-        # Lista de classes que geralmente aceitam entrada de texto
+        # Window classes that usually accept text input
         text_input_classes = [
             'edit', 'richedit', 'textbox', 'tbfind', 'scintilla',
             'thundrebirdwindowclass', 'mozillamaintreeclasswindow',
@@ -485,12 +489,12 @@ class TextInputChecker:
             'atom', 'vscode', 'notepad', 'wordpad', 'txview'
         ]
         
-        # Verifica se a classe está na lista
+        # Check the class against the list
         for text_class in text_input_classes:
             if text_class in class_name:
                 return True
                 
-        # Nomes específicos de aplicações de texto
+        # Names of known text applications
         app_names = [
             'notepad', 'word', 'wordpad', 'excel', 'powerpnt', 'onenote',
             'outlook', 'write', 'textedit', 'ultraedit', 'sublime_text',
@@ -498,7 +502,7 @@ class TextInputChecker:
             'brave', 'discord', 'slack', 'whatsapp', 'teams'
         ]
         
-        # Obtém título da janela
+        # Get the window title
         try:
             window_title = win32gui.GetWindowText(hwnd).lower()
             for app in app_names:
@@ -507,13 +511,13 @@ class TextInputChecker:
         except:
             pass
                 
-        # Verifica o tipo de controle para casos específicos
+        # Inspect the control type for the specific cases
         try:
-            # Obtém informações sobre o controle
+            # Read information about the control
             control_info = ctypes.create_string_buffer(1024)
             result = ctypes.windll.user32.GetClassInfoA(0, class_name.encode(), control_info)
             if result:
-                # Verifica estilos específicos de controles de edição
+                # Look for edit-control styles
                 style = ctypes.c_long.from_buffer(control_info, 16).value
                 if style & 0x00800000:  # ES_MULTILINE
                     return True
@@ -522,7 +526,7 @@ class TextInputChecker:
         
         return False
 
-# Classe para o diálogo de teste de microfone
+# Microphone test dialog
 class MicTestDialog(QDialog):
     def __init__(self, config, parent=None):
         super().__init__(parent)
@@ -530,12 +534,12 @@ class MicTestDialog(QDialog):
         self.setWindowTitle("Teste de Microfone")
         self.setMinimumSize(400, 300)
         
-        # Configura layout
+        # Set up the layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Título
+        # Title
         title_label = QLabel("Teste de Microfone")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title_label.setStyleSheet("""
@@ -575,8 +579,8 @@ class MicTestDialog(QDialog):
         """)
         card_layout.addWidget(self.status_label)
         
-        # Visualizador de nível de áudio
-        level_group = QGroupBox("Nível de Áudio")
+        # Audio level meter
+        level_group = QGroupBox("Audio Level")
         level_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
@@ -635,7 +639,7 @@ class MicTestDialog(QDialog):
         """)
         text_layout = QVBoxLayout(text_group)
         
-        self.text_output = QLabel("Ainda não foi reconhecido nenhum texto")
+        self.text_output = QLabel("No text recognised yet")
         self.text_output.setWordWrap(True)
         self.text_output.setStyleSheet("""
             background-color: #ffffff;
@@ -651,7 +655,7 @@ class MicTestDialog(QDialog):
         
         card_layout.addWidget(text_group)
         
-        # Botões
+        # Buttons
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
         
@@ -743,11 +747,11 @@ class MicTestDialog(QDialog):
         """)
         layout.addWidget(tip_label)
         
-        # Timer para atualizar nível de áudio
+        # Timer that refreshes the audio level
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_level)
         
-        # Áudio
+        # Audio
         self.p = None
         self.stream = None
         self.audio_processor = None
@@ -756,7 +760,7 @@ class MicTestDialog(QDialog):
         self.apply_theme()
     
     def apply_theme(self):
-        """Aplica o tema à interface"""
+        """Apply the theme to the interface."""
         self.setStyleSheet("""
             QDialog {
                 background-color: #ffffff;
@@ -787,17 +791,17 @@ class MicTestDialog(QDialog):
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         
-        # Inicia processamento de áudio
+        # Start audio processing
         self.audio_processor = AudioProcessor(self.config)
         self.audio_processor.text_ready.connect(self.update_text)
         self.audio_processor.progress_update.connect(self.level_bar.setValue)
         self.audio_processor.start()
         
-        # Inicia timer para atualizar nível de áudio
+        # Start the audio level timer
         self.timer.start(100)
     
     def stop_test(self):
-        self.status_label.setText("Processando áudio...")
+        self.status_label.setText("Processing audio...")
         self.status_label.setStyleSheet("""
             font-family: 'Segoe UI', sans-serif;
             font-size: 14px;
@@ -816,7 +820,7 @@ class MicTestDialog(QDialog):
     
     def update_level(self):
         if self.audio_processor and self.audio_processor.isRunning():
-            # Simula nível de áudio para feedback visual
+            # Fake an audio level, purely for visual feedback
             import random
             self.level_bar.setValue(random.randint(30, 80))
     
@@ -824,9 +828,9 @@ class MicTestDialog(QDialog):
         if text:
             self.text_output.setText(text)
         else:
-            self.text_output.setText("Não foi possível reconhecer nenhum texto")
+            self.text_output.setText("No text could be recognised")
         
-        self.status_label.setText("Teste concluído")
+        self.status_label.setText("Test complete")
         self.status_label.setStyleSheet("""
             font-family: 'Segoe UI', sans-serif;
             font-size: 14px;
@@ -840,13 +844,13 @@ class MicTestDialog(QDialog):
         self.start_button.setEnabled(True)
     
     def closeEvent(self, event):
-        # Garantir que o processamento de áudio seja interrompido ao fechar
+        # Make sure audio processing stops on close
         if self.audio_processor and self.audio_processor.isRunning():
             self.audio_processor.stop()
             self.timer.stop()
         event.accept()
 
-# Classe para a janela de configurações
+# Settings window
 class SettingsDialog(QDialog):
     config_changed = pyqtSignal()
     
@@ -854,7 +858,7 @@ class SettingsDialog(QDialog):
         super().__init__(parent)
         self.config = config
         self.original_hotkey = config.get('hotkey')
-        self.setWindowTitle("Configurações")
+        self.setWindowTitle("Settings")
         self.setMinimumSize(500, 400)
         
         # Aplicar estilo
@@ -865,8 +869,8 @@ class SettingsDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
         
-        # Título da janela
-        title_label = QLabel("Configurações do Assistente de Ditado")
+        # Window title
+        title_label = QLabel("Dictation Assistant Settings")
         title_label.setStyleSheet("""
             font-family: 'Segoe UI', sans-serif;
             font-size: 18px;
@@ -910,8 +914,8 @@ class SettingsDialog(QDialog):
         general_layout = QVBoxLayout(general_tab)
         general_layout.setSpacing(15)
         
-        # Grupo de Auto-inicialização
-        autostart_group = QGroupBox("Inicialização")
+        # Autostart group
+        autostart_group = QGroupBox("Startup")
         autostart_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
@@ -1005,12 +1009,12 @@ class SettingsDialog(QDialog):
         """)
         hotkey_layout = QVBoxLayout(hotkey_group)
         
-        hotkey_label = QLabel("Atalho para iniciar/parar gravação:")
+        hotkey_label = QLabel("Shortcut to start/stop recording:")
         hotkey_label.setStyleSheet("color: #333333;")
         hotkey_layout.addWidget(hotkey_label)
         
         self.hotkey_edit = QLineEdit(self.config.get('hotkey'))
-        self.hotkey_edit.setPlaceholderText("Pressione uma combinação de teclas")
+        self.hotkey_edit.setPlaceholderText("Press a key combination")
         self.hotkey_edit.setStyleSheet("""
             QLineEdit {
                 border: 1px solid #dddddd;
@@ -1050,7 +1054,7 @@ class SettingsDialog(QDialog):
         """)
         behavior_layout = QVBoxLayout(behavior_group)
         
-        self.continuous_check = QCheckBox("Reconhecimento contínuo (experimental)")
+        self.continuous_check = QCheckBox("Continuous recognition (experimental)")
         self.continuous_check.setStyleSheet("""
             QCheckBox {
                 color: #333333;
@@ -1074,7 +1078,7 @@ class SettingsDialog(QDialog):
         self.continuous_check.setChecked(self.config.get('continuous_recognition'))
         behavior_layout.addWidget(self.continuous_check)
         
-        self.realtime_check = QCheckBox("Mostrar texto em tempo real durante gravação")
+        self.realtime_check = QCheckBox("Show text in real time while recording")
         self.realtime_check.setStyleSheet("""
             QCheckBox {
                 color: #333333;
@@ -1100,13 +1104,13 @@ class SettingsDialog(QDialog):
         
         general_layout.addWidget(behavior_group)
         
-        # Aba de Áudio
+        # Audio tab
         audio_tab = QWidget()
         audio_layout = QVBoxLayout(audio_tab)
         audio_layout.setSpacing(15)
         
-        # Grupo de Qualidade de Áudio
-        quality_group = QGroupBox("Qualidade de Áudio")
+        # Audio quality group
+        quality_group = QGroupBox("Audio Quality")
         quality_group.setStyleSheet("""
             QGroupBox {
                 font-weight: bold;
@@ -1145,8 +1149,8 @@ class SettingsDialog(QDialog):
             }
         """)
         self.quality_combo.addItem("Alta (melhor qualidade)", "high")
-        self.quality_combo.addItem("Média (equilibrado)", "medium")
-        self.quality_combo.addItem("Baixa (mais rápido)", "low")
+        self.quality_combo.addItem("Medium (balanced)", "medium")
+        self.quality_combo.addItem("Low (faster)", "low")
         
         quality_idx = 0
         for i in range(self.quality_combo.count()):
@@ -1157,7 +1161,7 @@ class SettingsDialog(QDialog):
         
         quality_layout.addWidget(self.quality_combo)
         
-        # Botão de teste de microfone
+        # Microphone test button
         mic_test_button = QPushButton("Testar Microfone")
         mic_test_button.setStyleSheet("""
             QPushButton {
@@ -1219,12 +1223,12 @@ class SettingsDialog(QDialog):
                 border-left: 1px solid #dddddd;
             }
         """)
-        self.language_combo.addItem("Português (Brasil)", "pt-BR")
-        self.language_combo.addItem("Inglês (EUA)", "en-US")
-        self.language_combo.addItem("Espanhol", "es-ES")
-        self.language_combo.addItem("Francês", "fr-FR")
-        self.language_combo.addItem("Italiano", "it-IT")
-        self.language_combo.addItem("Alemão", "de-DE")
+        self.language_combo.addItem("Portuguese (Brazil)", "pt-BR")
+        self.language_combo.addItem("English (US)", "en-US")
+        self.language_combo.addItem("Spanish", "es-ES")
+        self.language_combo.addItem("French", "fr-FR")
+        self.language_combo.addItem("Italian", "it-IT")
+        self.language_combo.addItem("German", "de-DE")
         
         idx = 0
         for i in range(self.language_combo.count()):
@@ -1296,9 +1300,9 @@ class SettingsDialog(QDialog):
         
         # Adicionar todas as abas
         tab_widget.addTab(general_tab, "Geral")
-        tab_widget.addTab(audio_tab, "Áudio")
+        tab_widget.addTab(audio_tab, "Audio")
         
-        # Botões de OK e Cancelar
+        # OK and Cancel buttons
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
         
@@ -1355,7 +1359,7 @@ class SettingsDialog(QDialog):
         mic_test.exec()
     
     def apply_theme(self):
-        """Aplica o tema à interface"""
+        """Apply the theme to the interface."""
         self.setStyleSheet("""
             QDialog {
                 background-color: #ffffff;
@@ -1368,14 +1372,14 @@ class SettingsDialog(QDialog):
             }
         """)
         
-        # Configurações de janela
+        # Window settings
         self.setFixedSize(500, 600)
     
     def update_sensitivity_label(self, value):
         self.sensitivity_label.setText(f"Valor: {value}%")
     
     def save_settings(self):
-        # Salvar configurações
+        # Save settings
         self.config.set('auto_start', self.autostart_check.isChecked())
         self.config.set('theme', self.theme_combo.currentData())
         self.config.set('hotkey', self.hotkey_edit.text())
@@ -1385,16 +1389,16 @@ class SettingsDialog(QDialog):
         self.config.set('show_realtime_text', self.realtime_check.isChecked())
         self.config.set('audio_quality', self.quality_combo.currentData())
         
-        # Configure inicialização automática
+        # Configure autostart
         setup_autostart(self.autostart_check.isChecked())
         
-        # Emitir sinal de que as configurações foram alteradas
+        # Signal that the settings changed
         self.config_changed.emit()
         
-        # Fechar diálogo
+        # Close the dialog
         self.accept()
 
-# Janela principal da aplicação
+# Main application window
 class MainWindow(QMainWindow):
     def __init__(self, config):
         super().__init__()
@@ -1411,7 +1415,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(500, 400)
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint)
         
-        # Configurar ícone da aplicação
+        # Set the application icon
         self.setWindowIcon(QIcon("mic_icon.png"))
         
         # Configurar bandeja do sistema
@@ -1426,7 +1430,7 @@ class MainWindow(QMainWindow):
         # Registrar atalho global
         self.register_hotkey()
         
-        # Temporização para verificação periódica do estado do texto pendente
+        # Periodic check on the pending-text state
         self.pending_text_timer = QTimer(self)
         self.pending_text_timer.timeout.connect(self.check_pending_text)
         self.pending_text_timer.start(1000)  # Verifica a cada segundo
@@ -1438,42 +1442,42 @@ class MainWindow(QMainWindow):
         # Menu da bandeja
         tray_menu = QMenu()
         
-        # Ações do menu
+        # Menu actions
         show_action = QAction("Mostrar", self)
         show_action.triggered.connect(self.show)
         
-        settings_action = QAction("Configurações", self)
+        settings_action = QAction("Settings", self)
         settings_action.triggered.connect(self.show_settings)
         
         quit_action = QAction("Sair", self)
         quit_action.triggered.connect(self.quit_app)
         
-        # Adicionar ações ao menu
+        # Add the actions to the menu
         tray_menu.addAction(show_action)
         tray_menu.addAction(settings_action)
         tray_menu.addSeparator()
         tray_menu.addAction(quit_action)
         
-        # Definir menu para o ícone da bandeja
+        # Attach the menu to the tray icon
         self.tray_icon.setContextMenu(tray_menu)
         
-        # Mostrar ícone na bandeja
+        # Show the tray icon
         self.tray_icon.show()
         
-        # Conectar clique no ícone da bandeja
+        # Wire up clicks on the tray icon
         self.tray_icon.activated.connect(self.tray_icon_activated)
     
     def setup_ui(self):
-        # Widget principal com layout limpo
+        # Main widget with a clean layout
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
-        # Layout principal com margens adequadas
+        # Main layout with sensible margins
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(20, 20, 20, 20)
         main_layout.setSpacing(15)
         
-        # Cabeçalho simples
+        # Simple header
         header = QLabel("Assistente de Ditado")
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header.setStyleSheet("""
@@ -1484,7 +1488,7 @@ class MainWindow(QMainWindow):
         """)
         main_layout.addWidget(header)
         
-        # === SEÇÃO DE STATUS E CONTROLE ===
+        # === STATUS AND CONTROL SECTION ===
         status_card = QFrame()
         status_card.setObjectName("statusCard")
         status_card.setStyleSheet("""
@@ -1497,20 +1501,20 @@ class MainWindow(QMainWindow):
         status_layout = QVBoxLayout(status_card)
         status_layout.setSpacing(10)
         
-        # Status atual com ícone
+        # Current status, with an icon
         status_container = QWidget()
         status_container_layout = QHBoxLayout(status_container)
         status_container_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Ícone de microfone
+        # Microphone icon
         self.mic_icon = QLabel()
         self.mic_icon.setFixedSize(32, 32)
         
-        # Verificar se o arquivo de ícone existe, caso contrário criar um ícone básico
+        # Use the icon file when present, otherwise draw a basic one
         if os.path.exists("mic_icon.png"):
             self.mic_icon.setPixmap(QPixmap("mic_icon.png").scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
         else:
-            # Criar um ícone básico de microfone
+            # Draw a basic microphone icon
             pixmap = QPixmap(32, 32)
             pixmap.fill(Qt.GlobalColor.transparent)
             painter = QPainter(pixmap)
@@ -1535,11 +1539,11 @@ class MainWindow(QMainWindow):
         status_container_layout.addWidget(self.status_label)
         status_layout.addWidget(status_container)
         
-        # Botão de gravação principal
+        # Main record button
         self.record_button = QPushButton("Iniciar")
         self.record_button.setFixedHeight(40)
         
-        # Criar ícone para o botão se não existir
+        # Build the button icon when it is missing
         if not os.path.exists("mic_icon.png"):
             pixmap = QPixmap(24, 24)
             pixmap.fill(Qt.GlobalColor.transparent)
@@ -1596,7 +1600,7 @@ class MainWindow(QMainWindow):
         
         main_layout.addWidget(status_card)
         
-        # === SEÇÃO DE TEXTO EM TEMPO REAL ===
+        # === REAL-TIME TEXT SECTION ===
         realtime_card = QFrame()
         realtime_card.setObjectName("realtimeCard")
         realtime_card.setStyleSheet("""
@@ -1610,7 +1614,7 @@ class MainWindow(QMainWindow):
         realtime_layout = QVBoxLayout(realtime_card)
         realtime_layout.setContentsMargins(15, 15, 15, 15)
         
-        # Rótulo para texto em tempo real
+        # Label for the real-time text
         realtime_header = QLabel("Texto em tempo real:")
         realtime_header.setStyleSheet("""
             font-family: 'Segoe UI', sans-serif;
@@ -1638,7 +1642,7 @@ class MainWindow(QMainWindow):
         realtime_layout.addWidget(self.realtime_label)
         main_layout.addWidget(realtime_card)
         
-        # === SEÇÃO DE RESULTADO ===
+        # === RESULT SECTION ===
         result_card = QFrame()
         result_card.setObjectName("resultCard")
         result_card.setStyleSheet("""
@@ -1652,7 +1656,7 @@ class MainWindow(QMainWindow):
         result_layout = QVBoxLayout(result_card)
         result_layout.setContentsMargins(15, 15, 15, 15)
         
-        # Cabeçalho de resultado
+        # Result header
         result_header = QLabel("TEXTO RECONHECIDO")
         result_header.setAlignment(Qt.AlignmentFlag.AlignLeft)
         result_header.setStyleSheet("""
@@ -1680,11 +1684,11 @@ class MainWindow(QMainWindow):
         """)
         result_layout.addWidget(self.text_output)
         
-        # Área de ações para o texto reconhecido
+        # Action area for the recognised text
         actions_layout = QHBoxLayout()
         actions_layout.setSpacing(10)
         
-        # Botão de aceitar
+        # Accept button
         accept_button = QPushButton("ACEITAR (MOUSE5)")
         accept_button.setStyleSheet("""
             QPushButton {
@@ -1704,7 +1708,7 @@ class MainWindow(QMainWindow):
         accept_button.clicked.connect(self.paste_collected_text)
         actions_layout.addWidget(accept_button)
         
-        # Botão de rejeitar
+        # Reject button
         reject_button = QPushButton("REJEITAR (MOUSE6)")
         reject_button.setStyleSheet("""
             QPushButton {
@@ -1727,7 +1731,7 @@ class MainWindow(QMainWindow):
         result_layout.addLayout(actions_layout)
         main_layout.addWidget(result_card)
         
-        # === SEÇÃO DE CONFIGURAÇÕES RÁPIDAS ===
+        # === QUICK SETTINGS SECTION ===
         settings_card = QFrame()
         settings_card.setObjectName("settingsCard")
         settings_card.setStyleSheet("""
@@ -1741,10 +1745,10 @@ class MainWindow(QMainWindow):
         settings_layout = QHBoxLayout(settings_card)
         settings_layout.setContentsMargins(15, 10, 15, 10)
         
-        # Botão de configurações
-        settings_button = QPushButton("Configurações")
+        # Settings button
+        settings_button = QPushButton("Settings")
         
-        # Criar ícone para o botão
+        # Build the button icon
         pixmap = QPixmap(16, 16)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
@@ -1771,10 +1775,10 @@ class MainWindow(QMainWindow):
         settings_button.clicked.connect(self.show_settings)
         settings_layout.addWidget(settings_button)
         
-        # Botão para testar microfone
+        # Microphone test button
         mic_test_button = QPushButton("Testar Microfone")
         
-        # Criar ícone para o botão
+        # Build the button icon
         pixmap = QPixmap(16, 16)
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
@@ -1803,8 +1807,8 @@ class MainWindow(QMainWindow):
         
         main_layout.addWidget(settings_card)
         
-        # Rodapé com dica
-        footer = QLabel("Dica: Use os botões laterais do mouse (MOUSE5 e MOUSE6) para controlar o aplicativo.")
+        # Footer hint
+        footer = QLabel("Tip: use the side mouse buttons (MOUSE5 and MOUSE6) to control the app.")
         footer.setWordWrap(True)
         footer.setAlignment(Qt.AlignmentFlag.AlignCenter)
         footer.setStyleSheet("""
@@ -1819,7 +1823,7 @@ class MainWindow(QMainWindow):
         self.apply_theme()
     
     def connect_signals(self):
-        # Conectar sinais do processador de áudio
+        # Connect the audio processor's signals
         self.audio_processor.text_ready.connect(self.update_text)
         self.audio_processor.partial_text.connect(self.update_realtime_text)
         self.audio_processor.progress_update.connect(self.progress_bar.setValue)
@@ -1833,47 +1837,47 @@ class MainWindow(QMainWindow):
             
             self.original_hotkey = self.config.get('hotkey')
             
-            # Se for um botão do mouse
+            # When it is a mouse button
             if 'mouse' in self.original_hotkey.lower():
-                # Configura o listener do mouse
+                # Set up the mouse listener
                 self.mouse_listener = mouse.Listener(on_click=self.on_mouse_click)
                 self.mouse_listener.start()
                 log.info(f"Registrado listener do mouse para: {self.original_hotkey}")
             else:
-                # Se for uma tecla do teclado, usa a biblioteca keyboard
+                # For a keyboard key, use the keyboard library
                 try:
                     keyboard.remove_hotkey(self.original_hotkey)
                 except:
                     pass
                 keyboard.add_hotkey(self.original_hotkey, self.toggle_recording)
             
-            # Atualizar texto do botão
+            # Update the button text
             self.record_button.setText("INICIAR")
         except Exception as e:
             log.error(f"Erro ao registrar atalho: {e}")
-            QMessageBox.warning(self, "Erro", f"Não foi possível registrar o atalho: {e}")
+            QMessageBox.warning(self, "Error", f"Could not register the shortcut: {e}")
     
     def on_mouse_click(self, x, y, button, pressed):
-        """Função de callback para eventos de clique do mouse"""
-        # Converte o nome do botão para string e remove o prefixo "Button."
+        """Callback for mouse click events."""
+        # Stringify the button name and drop the "Button." prefix
         button_name = str(button).replace('Button.', '')
         target_button = self.original_hotkey.lower().replace('mouse', '')
         
-        # Verifica se é o botão mouse5 (x2)
+        # Check for the mouse5 button (x2)
         if button_name == 'x2' and self.original_hotkey.lower() == 'mouse5' and pressed:
-            # Chama toggle_recording se for o botão correto
+            # Toggle recording when it is the right button
             QTimer.singleShot(0, self.toggle_recording)
             
-        # Verifica se é o botão mouse6 (usado para rejeitar texto)
+        # Check for the mouse6 button, which rejects the text
         elif button_name == 'x1' and pressed and self.text_collected:
             # Rejeita o texto reconhecido
             QTimer.singleShot(0, self.reject_text)
     
     def toggle_recording(self):
-        """Inicia ou para a gravação de áudio"""
+        """Start or stop audio recording."""
         
         if self.recording_active:
-            # Parar gravação
+            # Stop recording
             self.audio_processor.stop()
             self.status_label.setText("Processando...")
             self.status_label.setStyleSheet("""
@@ -1903,7 +1907,7 @@ class MainWindow(QMainWindow):
             """)
             self.recording_active = False
             
-            # Parar animação do microfone
+            # Stop the microphone animation
             if hasattr(self, 'mic_animation') and self.mic_animation is not None:
                 self.mic_animation.stop()
             
@@ -1920,7 +1924,7 @@ class MainWindow(QMainWindow):
             """)
             
         else:
-            # Iniciar gravação
+            # Start recording
             self.status_label.setText("Gravando...")
             self.status_label.setStyleSheet("""
                 font-family: 'Segoe UI', sans-serif;
@@ -1954,7 +1958,7 @@ class MainWindow(QMainWindow):
             self.progress_bar.setValue(0)
             self.text_output.setText("")
             
-            # Iniciar animação do microfone (efeito pulsante)
+            # Start the pulsing microphone animation
             self.mic_animation = QPropertyAnimation(self.mic_icon, b"geometry")
             self.mic_animation.setDuration(1000)
             self.mic_animation.setLoopCount(-1)  # Loop infinito
@@ -1980,7 +1984,7 @@ class MainWindow(QMainWindow):
         self.text_collected = True
         self.text_rejected = False
         
-        # Mostrar notificação
+        # Show a notification
         self.tray_icon.showMessage(
             "Assistente de Ditado",
             "Texto reconhecido. Mouse5: colar texto | Mouse6: rejeitar texto",
@@ -1989,7 +1993,7 @@ class MainWindow(QMainWindow):
         )
     
     def reject_text(self):
-        """Função para rejeitar o texto reconhecido"""
+        """Reject the recognised text."""
         if self.text_collected:
             self.text_rejected = True
             self.text_collected = False
@@ -2003,7 +2007,7 @@ class MainWindow(QMainWindow):
             except:
                 pass
             
-            # Mostrar notificação
+            # Show a notification
             self.tray_icon.showMessage(
                 "Assistente de Ditado",
                 "TEXTO REJEITADO! Reiniciando para nova tentativa...",
@@ -2011,32 +2015,32 @@ class MainWindow(QMainWindow):
                 2000
             )
             
-            # Reinicia a gravação automaticamente após um pequeno atraso
+            # Restart recording automatically after a short delay
             if not self.recording_active:
                 QTimer.singleShot(1000, self.toggle_recording)
     
     def paste_collected_text(self):
-        # Verifica se há uma área de texto em foco
+        # Check whether a text area has focus
         if TextInputChecker.is_text_input_focused():
-            # Usar a abordagem de copiar para a área de transferência e colar
+            # Go through the clipboard: copy, then paste
             clipboard_backup = None
             try:
-                # Fazer backup da área de transferência atual
+                # Back up the current clipboard
                 win32clipboard.OpenClipboard()
                 if win32clipboard.IsClipboardFormatAvailable(win32clipboard.CF_UNICODETEXT):
                     clipboard_backup = win32clipboard.GetClipboardData(win32clipboard.CF_UNICODETEXT)
                 win32clipboard.CloseClipboard()
                 
-                # Copiar o texto reconhecido para a área de transferência
+                # Copy the recognised text to the clipboard
                 win32clipboard.OpenClipboard()
                 win32clipboard.EmptyClipboard()
                 win32clipboard.SetClipboardText(self.pending_text, win32clipboard.CF_UNICODETEXT)
                 win32clipboard.CloseClipboard()
                 
-                # Simular Ctrl+V para colar
+                # Send Ctrl+V to paste
                 pyautogui.hotkey('ctrl', 'v')
                 
-                # Restaurar a área de transferência original após um pequeno delay
+                # Restore the original clipboard after a short delay
                 if clipboard_backup is not None:
                     time.sleep(0.1)  # Pequena pausa para garantir que o texto foi colado
                     win32clipboard.OpenClipboard()
@@ -2047,13 +2051,13 @@ class MainWindow(QMainWindow):
                 # Limpar texto pendente
                 self.pending_text = ""
             except Exception as e:
-                log.error(f"Erro ao manipular área de transferência: {e}")
+                log.error(f"Clipboard handling failed: {e}")
         else:
-            # Informar que não há área de texto em foco
-            self.status_label.setText("Nenhuma área editável selecionada!")
+            # Report that no text area has focus
+            self.status_label.setText("No editable area selected")
             self.tray_icon.showMessage(
                 "Assistente de Ditado",
-                "Não há área editável selecionada. Clique em um campo de texto e tente novamente.",
+                "No editable area is selected. Click a text field and try again.",
                 QSystemTrayIcon.MessageIcon.Warning,
                 3000
             )
@@ -2062,7 +2066,7 @@ class MainWindow(QMainWindow):
         self.realtime_label.setText(text)
     
     def apply_theme(self):
-        """Aplica o tema à interface"""
+        """Apply the theme to the interface."""
         
         # Estilo global
         style = """
@@ -2102,7 +2106,7 @@ class MainWindow(QMainWindow):
         """
         self.setStyleSheet(style)
         
-        # Configurações de janela
+        # Window settings
         self.setFixedSize(500, 650)
     
     def show(self):
@@ -2132,23 +2136,23 @@ class MainWindow(QMainWindow):
             self.show()
     
     def check_pending_text(self):
-        # Função mantida vazia só para não quebrar referências
+        # Kept empty so existing references do not break
         pass
         
     def closeEvent(self, event):
         # Para o listener do mouse antes de fechar
         if self.mouse_listener:
             self.mouse_listener.stop()
-        # Certifique-se de parar qualquer gravação em andamento
+        # Make sure any running recording is stopped
         if self.audio_processor.isRunning():
             self.audio_processor.stop()
             self.audio_processor.wait()
         event.accept()
 
-# Função para gerar um ícone básico de microfone
+# Draws a basic microphone icon
 def create_mic_icon():
     try:
-        # Criar uma imagem simples de microfone
+        # Draw a simple microphone image
         from PIL import Image, ImageDraw
         
         img = Image.new('RGBA', (128, 128), color=(0, 0, 0, 0))
@@ -2162,9 +2166,9 @@ def create_mic_icon():
         
         img.save("mic_icon.png")
     except Exception as e:
-        log.error(f"Erro ao criar ícone: {e}")
+        log.error(f"Failed to create the icon: {e}")
 
-# Função para configurar a inicialização automática com o Windows
+# Configures autostart with Windows
 def setup_autostart(enable=True):
     import winreg
     
@@ -2184,7 +2188,7 @@ def setup_autostart(enable=True):
             # Adicionar ao iniciar
             winreg.SetValueEx(key, app_name, 0, winreg.REG_SZ, f'"{app_path}"')
         else:
-            # Remover da inicialização
+            # Remove from startup
             try:
                 winreg.DeleteValue(key, app_name)
             except FileNotFoundError:
@@ -2193,7 +2197,7 @@ def setup_autostart(enable=True):
         winreg.CloseKey(key)
         return True
     except Exception as e:
-        log.error(f"Erro ao configurar inicialização automática: {e}")
+        log.error(f"Failed to configure autostart: {e}")
         return False
 
 if __name__ == "__main__":
