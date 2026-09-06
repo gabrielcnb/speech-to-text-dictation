@@ -1,10 +1,10 @@
 # Live Dictate
 
+Windows desktop app for speech-to-text dictation. Hold a hotkey, speak, and the transcribed text is typed into any focused window.
+
 ![Python](https://img.shields.io/badge/Python-3.9+-3776AB?logo=python&logoColor=white)
 ![Windows](https://img.shields.io/badge/Windows-0078D6?logo=windows&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
-
-Windows desktop app for speech-to-text dictation. Hold a hotkey, speak, and the transcribed text is typed into any focused window.
 
 ## Features
 
